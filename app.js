@@ -1,93 +1,16 @@
-const $ = (selector) => document.querySelector(selector);
-const ui = {
-  file: $('#file-input'), fileName: $('#file-name'), canvas: $('#waveform'), seek: $('#waveform-hit-area'),
-  play: $('#play'), stop: $('#stop'), volume: $('#volume'), current: $('#current-time'), duration: $('#duration'),
-  sampleRate: $('#sample-rate'), channels: $('#channels'), diagDuration: $('#diag-duration'),
-  octave: $('#target-octave'), strength: $('#strength'), strengthValue: $('#strength-value'), target: $('#target-readout')
-};
-
-let context;
-let gain;
-let buffer;
-let source;
-let startedAt = 0;
-let pausedAt = 0;
-let playing = false;
-let animationFrame;
-
-function ensureAudio() {
-  context ??= new AudioContext();
-  if (!gain) { gain = context.createGain(); gain.gain.value = Number(ui.volume.value); gain.connect(context.destination); }
-}
-
-function formatTime(seconds) {
-  if (!Number.isFinite(seconds)) return '0:00.0';
-  const mins = Math.floor(seconds / 60);
-  return `${mins}:${(seconds % 60).toFixed(1).padStart(4, '0')}`;
-}
-
-function drawWaveform(progress = 0) {
-  const canvas = ui.canvas;
-  const ratio = devicePixelRatio || 1;
-  const width = canvas.clientWidth;
-  const height = canvas.clientHeight;
-  if (canvas.width !== width * ratio || canvas.height !== height * ratio) { canvas.width = width * ratio; canvas.height = height * ratio; }
-  const ctx = canvas.getContext('2d');
-  ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
-  ctx.clearRect(0, 0, width, height);
-  ctx.fillStyle = '#080c11'; ctx.fillRect(0, 0, width, height);
-  ctx.strokeStyle = '#1d2b37'; ctx.beginPath(); ctx.moveTo(0, height / 2); ctx.lineTo(width, height / 2); ctx.stroke();
-  if (!buffer) { ctx.fillStyle='#607067'; ctx.textAlign='center'; ctx.fillText('IMPORT AUDIO TO BEGIN',width/2,height/2-12); return; }
-  const data = buffer.getChannelData(0);
-  const columns = Math.max(1, Math.floor(width));
-  const step = Math.max(1, Math.floor(data.length / columns));
-  for (let x = 0; x < columns; x++) {
-    let min = 1, max = -1;
-    const start = x * step;
-    for (let i = 0; i < step && start + i < data.length; i++) { const v=data[start+i]; if(v<min)min=v; if(v>max)max=v; }
-    ctx.strokeStyle = x / columns <= progress ? '#62f28c' : '#496254';
-    ctx.beginPath(); ctx.moveTo(x,(1+min)*height/2); ctx.lineTo(x,(1+max)*height/2); ctx.stroke();
-  }
-  ctx.fillStyle='#ffc857'; ctx.fillRect(Math.min(progress,1)*width-1,0,2,height);
-}
-
-function stopSource() {
-  if (source) { source.onended = null; try { source.stop(); } catch {} source.disconnect(); source = null; }
-  cancelAnimationFrame(animationFrame); playing = false; ui.play.textContent = 'Play';
-}
-
-async function play() {
-  if (!buffer) return;
-  ensureAudio(); await context.resume(); stopSource();
-  source = context.createBufferSource(); source.buffer = buffer; source.connect(gain);
-  startedAt = context.currentTime - pausedAt; source.start(0, pausedAt);
-  source.onended = () => { if (playing) { pausedAt=0; stopSource(); updatePosition(); } };
-  playing = true; ui.play.textContent='Pause'; tick();
-}
-
-function pause() { pausedAt = Math.min(buffer.duration, context.currentTime - startedAt); stopSource(); updatePosition(); }
-function reset() { stopSource(); pausedAt=0; updatePosition(); }
-function updatePosition() {
-  const position = playing ? Math.min(buffer.duration, context.currentTime-startedAt) : pausedAt;
-  ui.current.textContent=formatTime(position); drawWaveform(buffer ? position/buffer.duration : 0);
-}
-function tick() { updatePosition(); if (playing) animationFrame=requestAnimationFrame(tick); }
-
-ui.file.addEventListener('change', async () => {
-  const file=ui.file.files[0]; if(!file)return;
-  ensureAudio(); reset(); ui.fileName.textContent=`Decoding ${file.name}…`;
-  try {
-    buffer=await context.decodeAudioData(await file.arrayBuffer());
-    ui.fileName.textContent=file.name; ui.duration.textContent=formatTime(buffer.duration); ui.diagDuration.textContent=formatTime(buffer.duration);
-    ui.sampleRate.textContent=`${buffer.sampleRate.toLocaleString()} Hz`; ui.channels.textContent=String(buffer.numberOfChannels);
-    ui.play.disabled=false; ui.stop.disabled=false; drawWaveform();
-  } catch (error) { buffer=null; ui.fileName.textContent=`Could not decode ${file.name}: ${error.message}`; drawWaveform(); }
-});
-ui.play.addEventListener('click', () => playing ? pause() : play());
-ui.stop.addEventListener('click', reset);
-ui.volume.addEventListener('input', () => { ensureAudio(); gain.gain.setTargetAtTime(Number(ui.volume.value),context.currentTime,.01); });
-ui.seek.addEventListener('click', (event) => { if(!buffer)return; const wasPlaying=playing; stopSource(); pausedAt=(event.offsetX/ui.seek.clientWidth)*buffer.duration; wasPlaying?play():updatePosition(); });
-ui.strength.addEventListener('input', () => ui.strengthValue.textContent=`${ui.strength.value}%`);
-ui.octave.addEventListener('change', () => { const midi=12*(Number(ui.octave.value)+1); const hz=440*2**((midi-69)/12); ui.target.textContent=`C${ui.octave.value} (${hz.toFixed(2)} Hz)`; });
-addEventListener('resize', updatePosition);
-drawWaveform();
+const $=s=>document.querySelector(s);const ui={file:$('#file-input'),fileName:$('#file-name'),canvas:$('#waveform'),seek:$('#waveform-hit-area'),play:$('#play'),stop:$('#stop'),volume:$('#volume'),current:$('#current-time'),duration:$('#duration'),sampleRate:$('#sample-rate'),channels:$('#channels'),diagDuration:$('#diag-duration'),octave:$('#target-octave'),strength:$('#strength'),strengthValue:$('#strength-value'),target:$('#target-readout'),root:$('#target-note'),scale:$('#scale'),process:$('#process'),original:$('#original'),processed:$('#processed'),export:$('#export'),state:$('#engine-state'),voiced:$('#voiced')};
+let context,gain,originalBuffer,processedBuffer,buffer,source,startedAt=0,pausedAt=0,playing=false,animationFrame;
+function ensureAudio(){context??=new AudioContext();if(!gain){gain=context.createGain();gain.gain.value=+ui.volume.value;gain.connect(context.destination)}}
+const fmt=s=>Number.isFinite(s)?`${Math.floor(s/60)}:${(s%60).toFixed(1).padStart(4,'0')}`:'0:00.0';
+function drawWaveform(progress=0){const c=ui.canvas,r=devicePixelRatio||1,w=c.clientWidth,h=c.clientHeight;if(c.width!==w*r||c.height!==h*r){c.width=w*r;c.height=h*r}const x=c.getContext('2d');x.setTransform(r,0,0,r,0,0);x.clearRect(0,0,w,h);x.fillStyle='#080c11';x.fillRect(0,0,w,h);if(!buffer){x.fillStyle='#607067';x.textAlign='center';x.fillText('IMPORT AUDIO TO BEGIN',w/2,h/2);return}const d=buffer.getChannelData(0),cols=Math.max(1,w|0),step=Math.max(1,(d.length/cols)|0);for(let p=0;p<cols;p++){let lo=1,hi=-1,s=p*step;for(let i=0;i<step&&s+i<d.length;i++){let v=d[s+i];lo=Math.min(lo,v);hi=Math.max(hi,v)}x.strokeStyle=p/cols<=progress?'#62f28c':'#496254';x.beginPath();x.moveTo(p,(1+lo)*h/2);x.lineTo(p,(1+hi)*h/2);x.stroke()}x.fillStyle='#ffc857';x.fillRect(Math.min(progress,1)*w-1,0,2,h)}
+function stopSource(){if(source){source.onended=null;try{source.stop()}catch{}source.disconnect();source=null}cancelAnimationFrame(animationFrame);playing=false;ui.play.textContent='Play'}
+async function play(){if(!buffer)return;ensureAudio();await context.resume();stopSource();source=context.createBufferSource();source.buffer=buffer;source.connect(gain);startedAt=context.currentTime-pausedAt;source.start(0,pausedAt);source.onended=()=>{if(playing){pausedAt=0;stopSource();updatePosition()}};playing=true;ui.play.textContent='Pause';tick()}
+function pause(){pausedAt=Math.min(buffer.duration,context.currentTime-startedAt);stopSource();updatePosition()}function reset(){stopSource();pausedAt=0;updatePosition()}function updatePosition(){let p=buffer?(playing?Math.min(buffer.duration,context.currentTime-startedAt):pausedAt):0;ui.current.textContent=fmt(p);drawWaveform(buffer?p/buffer.duration:0)}function tick(){updatePosition();if(playing)animationFrame=requestAnimationFrame(tick)}
+const roots={C:0,'C#':1,D:2,'D#':3,E:4,F:5,'F#':6,G:7,'G#':8,A:9,'A#':10,B:11};const scales={zero:[0],major:[0,2,4,5,7,9,11],minor:[0,2,3,5,7,8,10],pentatonic:[0,3,5,7,10],chromatic:[0,1,2,3,4,5,6,7,8,9,10,11]};
+function nearestTarget(midi){const allowed=scales[ui.scale.value],root=roots[ui.root.value];let best=midi,dist=1e9;for(let m=Math.floor(midi)-24;m<=Math.ceil(midi)+24;m++){let pc=(m-root)%12;if(pc<0)pc+=12;if(allowed.includes(pc)&&Math.abs(m-midi)<dist){best=m;dist=Math.abs(m-midi)}}return best}
+function detectPitch(frame,sr){let rms=0;for(let v of frame)rms+=v*v;rms=Math.sqrt(rms/frame.length);if(rms<.012)return 0;let minLag=Math.floor(sr/1200),maxLag=Math.min(Math.floor(sr/55),frame.length-2),best=0,bestCorr=.35;for(let lag=minLag;lag<=maxLag;lag++){let a=0,b=0,c=0;for(let i=0;i<frame.length-lag;i++){let x=frame[i],y=frame[i+lag];a+=x*y;b+=x*x;c+=y*y}let corr=a/Math.sqrt(b*c+1e-12);if(corr>bestCorr){bestCorr=corr;best=lag}}return best?sr/best:0}
+function refactorChannel(input,sr){const N=2048,H=512,out=new Float32Array(input.length),norm=new Float32Array(input.length),frame=new Float32Array(N);let voiced=0;for(let pos=0;pos<input.length;pos+=H){for(let i=0;i<N;i++)frame[i]=input[pos+i]||0;let hz=detectPitch(frame,sr),ratio=1;if(hz){voiced++;let midi=69+12*Math.log2(hz/440),target=nearestTarget(midi),full=2**((target-midi)/12),amt=+ui.strength.value/100;ratio=2**(Math.log2(full)*amt)}for(let i=0;i<N&&pos+i<out.length;i++){let win=.5-.5*Math.cos(2*Math.PI*i/(N-1));let src=i*ratio,j=Math.floor(src),f=src-j,v=(j+1<N)?frame[j]*(1-f)+frame[j+1]*f:0;out[pos+i]+=v*win;norm[pos+i]+=win} }for(let i=0;i<out.length;i++)if(norm[i]>.001)out[i]/=norm[i];return {out,voiced}}
+async function processAudio(){if(!originalBuffer)return;reset();ui.state.textContent='Analyzing / refactoring…';ui.process.disabled=true;await new Promise(r=>setTimeout(r,20));const channels=[],sr=originalBuffer.sampleRate;let voiced=0;for(let c=0;c<originalBuffer.numberOfChannels;c++){let r=refactorChannel(originalBuffer.getChannelData(c),sr);channels.push(r.out);voiced=Math.max(voiced,r.voiced)}processedBuffer=context.createBuffer(channels.length,originalBuffer.length,sr);channels.forEach((d,c)=>processedBuffer.copyToChannel(d,c));buffer=processedBuffer;ui.voiced.textContent=String(voiced);ui.state.textContent='Processed preview';ui.process.disabled=false;ui.processed.disabled=false;ui.export.disabled=false;reset()}
+function wavBlob(b){let ch=b.numberOfChannels,n=b.length,ab=new ArrayBuffer(44+n*ch*2),v=new DataView(ab),p=0;const s=x=>{for(let c of x)v.setUint8(p++,c.charCodeAt(0))};s('RIFF');v.setUint32(p,36+n*ch*2,true);p+=4;s('WAVEfmt ');v.setUint32(p,16,true);p+=4;v.setUint16(p,1,true);p+=2;v.setUint16(p,ch,true);p+=2;v.setUint32(p,b.sampleRate,true);p+=4;v.setUint32(p,b.sampleRate*ch*2,true);p+=4;v.setUint16(p,ch*2,true);p+=2;v.setUint16(p,16,true);p+=2;s('data');v.setUint32(p,n*ch*2,true);p+=4;for(let i=0;i<n;i++)for(let c=0;c<ch;c++){let x=Math.max(-1,Math.min(1,b.getChannelData(c)[i]));v.setInt16(p,x<0?x*32768:x*32767,true);p+=2}return new Blob([ab],{type:'audio/wav'})}
+ui.file.addEventListener('change',async()=>{let f=ui.file.files[0];if(!f)return;ensureAudio();reset();ui.fileName.textContent=`Decoding ${f.name}…`;try{originalBuffer=await context.decodeAudioData(await f.arrayBuffer());processedBuffer=null;buffer=originalBuffer;ui.fileName.textContent=f.name;ui.duration.textContent=fmt(buffer.duration);ui.diagDuration.textContent=fmt(buffer.duration);ui.sampleRate.textContent=`${buffer.sampleRate.toLocaleString()} Hz`;ui.channels.textContent=buffer.numberOfChannels;ui.play.disabled=ui.stop.disabled=ui.process.disabled=ui.original.disabled=false;ui.processed.disabled=ui.export.disabled=true;ui.state.textContent='Original loaded';drawWaveform()}catch(e){ui.fileName.textContent=`Could not decode: ${e.message}`}});
+ui.play.onclick=()=>playing?pause():play();ui.stop.onclick=reset;ui.process.onclick=processAudio;ui.original.onclick=()=>{buffer=originalBuffer;ui.state.textContent='Original preview';reset()};ui.processed.onclick=()=>{if(processedBuffer){buffer=processedBuffer;ui.state.textContent='Processed preview';reset()}};ui.export.onclick=()=>{if(!processedBuffer)return;let a=document.createElement('a');a.href=URL.createObjectURL(wavBlob(processedBuffer));a.download='c-zero-refactor.wav';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)};ui.volume.oninput=()=>{ensureAudio();gain.gain.setTargetAtTime(+ui.volume.value,context.currentTime,.01)};ui.seek.onclick=e=>{if(!buffer)return;let was=playing;stopSource();pausedAt=e.offsetX/ui.seek.clientWidth*buffer.duration;was?play():updatePosition()};ui.strength.oninput=()=>ui.strengthValue.textContent=`${ui.strength.value}%`;function targetReadout(){ui.target.textContent=`${ui.root.value}${ui.octave.value} / ${ui.scale.options[ui.scale.selectedIndex].text}`}ui.root.onchange=targetReadout;ui.octave.onchange=targetReadout;ui.scale.onchange=targetReadout;addEventListener('resize',updatePosition);drawWaveform();
