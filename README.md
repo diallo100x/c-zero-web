@@ -1,26 +1,24 @@
 # C-Zero Audio Refactoring Lab
 
-C-Zero is an experimental browser-based audio tool intended to preserve rhythm and timing while refactoring melodic material toward a target note or, later, a selected scale. The default target is middle C (`C4`, 261.63 Hz).
+C-Zero is an experimental browser audio tool for preserving a source timeline while refactoring dominant melodic pitch toward C or a selected scale. The long-term engine is intended to become part of the Instrument Builder infrastructure and later feed the Time-Locked Sampler.
 
 ## Current milestone
 
-The first vertical slice runs entirely in the browser and includes:
+The browser test now includes local audio import, waveform/transport, dominant-pitch analysis on overlapping frames, C-Zero root-only mapping, major/natural-minor/minor-pentatonic/chromatic scale mapping, adjustable correction strength, original/processed A-B preview, and processed WAV export.
 
-- local audio import and Web Audio decoding;
-- waveform rendering and click-to-seek;
-- play, pause, stop, volume, time, and file diagnostics;
-- target-C octave and refactor-strength controls;
-- a clear passthrough state so unimplemented DSP is never mistaken for processing.
+Processing stays local in the browser; audio is not uploaded.
 
-No audio is uploaded. In this milestone, playback is deliberately unprocessed.
+### Important DSP limitation
+
+This is the first audible processing prototype, not the final full-mix algorithm. It works best on monophonic and melody-dominant material. A polyphonic master contains simultaneous notes plus drums/noise, so reliable full-song de-melodization requires stem-aware processing and/or multi-pitch estimation. The current overlap-add resynthesis keeps output duration fixed but can introduce artifacts on complex material.
 
 ## Web test
 
-Once GitHub Pages is enabled for the `main` branch/root folder, test at:
+GitHub Pages target:
 
 **https://diallo100x.github.io/c-zero-web/**
 
-The app is static and has no build step. For local testing, serve the repository with any static server rather than opening `index.html` directly. For example:
+The app is static and has no build step. Local test:
 
 ```bash
 python3 -m http.server 8080
@@ -28,30 +26,27 @@ python3 -m http.server 8080
 
 Then open `http://localhost:8080`.
 
-## First DSP implementation step
-
-Implement a testable **monophonic pitch-analysis adapter** behind a stable processing contract:
-
-1. divide a mono test signal into overlapping frames;
-2. estimate fundamental frequency plus confidence per frame;
-3. reject silence, percussion, and low-confidence frames;
-4. calculate the signed pitch offset from each accepted frame to the chosen C octave;
-5. visualize the detected pitch and proposed correction before altering samples.
-
-This is intentionally narrower than full-song de-melodization. Polyphonic songs require source/stem separation or multi-pitch estimation so drums and concurrent notes are not flattened by a whole-mix pitch shifter.
-
-## Planned architecture
+## Processing path
 
 ```text
-Audio file -> Decoder -> Waveform/Transport
-                       -> Analysis frames -> Pitch/confidence -> C/scale mapper -> Time-preserving shifter -> Export
+Audio file
+  -> Web Audio decode
+  -> overlapping analysis frames
+  -> dominant F0 + voiced-frame gate
+  -> nearest C / selected-scale note
+  -> strength interpolation
+  -> fixed-timeline overlap-add resynthesis
+  -> A/B preview
+  -> WAV export
 ```
 
-DSP modules should remain independent of the UI so the same engine can later move into the Instrument Builder, Time-Locked Sampler, or a native app.
+## Next DSP steps
 
-## Browser support
-
-Recent Safari, Chrome, Edge, and Firefox releases with Web Audio support. File-format decoding depends on the browser and operating system.
+1. Separate transient/percussive energy from pitched energy so drums remain untouched.
+2. Replace the prototype frame resampler with a higher-quality phase-vocoder or PSOLA-style time-preserving pitch engine.
+3. Add multi-pitch/polyphonic analysis or stem adapters for full mixes.
+4. Add pitch/confidence visualization and per-region correction diagnostics.
+5. Package the DSP contract so the same refactor engine can be reused by Instrument Builder and Time-Locked Sampler.
 
 ## Status
 
