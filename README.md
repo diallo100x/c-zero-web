@@ -51,3 +51,14 @@ Audio file
 ## Status
 
 Prototype / research software. Do not use it as a mastering replacement yet.
+
+## v0.2 development — Melodic Refactor Engine
+
+The `v0.2-melodic-refactor` branch adds two explicit transformation models:
+
+- **Flatten**: move each voiced note center to the selected pitch class in its nearest octave rather than forcing all material into one physical C.
+- **Scale Conform**: move each detected note center to the nearest legal degree of the selected root/scale.
+- **Expression Preserve**: retain a selectable percentage of the original cents deviation around the newly mapped note center, preserving vibrato/bends while changing the underlying melody.
+- Added Dorian, Mixolydian and Harmonic Minor targets in addition to the existing scales.
+
+This is the first step toward a shared PaperChase pitch/scale analysis contract for C-Zero, Instrument DNA, Voice → Instrument, Instrument Builder and Time-Locked Sampler. The browser autocorrelation/resampler remains a prototype; FCPE/RMVPE/GAME-style analysis and higher-quality resynthesis are later engine upgrades.
